@@ -99,6 +99,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   .btn.primary { background: var(--green); border-color: var(--green); color: #fff; font-size: 15px; padding: 12px 22px; }
   .btn.primary:hover { background: var(--green-dark); }
   .btn.small { padding: 6px 10px; font-size: 12px; }
+  .btn:disabled { opacity: .6; cursor: default; }
   .hint { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.7; }
   .proposal { margin-top: 10px; padding: 10px 12px; background: var(--amber); border-radius: 8px; font-size: 13px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   footer.bar { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 2px solid var(--green); padding: 10px 12px; box-shadow: 0 -4px 16px rgba(0,0,0,.08); }
@@ -167,6 +168,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <li><b>遠征後:</b>「収支報告」に切り替えると計画の数量・金額が引き継がれるので、実績を入れるだけ。差額は自動計算。</li>
       <li><b>自動保存:</b>入力内容はこの端末のブラウザに自動で保存されます。閉じても次に開けば続きから。別の遠征を始めるときは基本情報の「🆕 新しく作り直す」を押してください。</li>
       <li><b>引き継ぎ:</b>「データ保存」で出るファイルを相手が「データ読込」すれば続きから作業できます。他のスタッフへの引き継ぎはこのファイルをLINE等で送るだけ。</li>
+      <li><b>Excelから戻す:</b>「データ読込」では、このツールで作った<b>Excel(.xlsx)もそのまま読み込めます</b>。過去の計画書を開いて数字を直したり、計画書を報告書に引き継いだりできます。(PDFは提出用の完成書類なので読み込めません)</li>
       <li>入力内容はどこにも送信されません(この端末の中だけで完結)。</li>
     </ul>
   </details>
@@ -225,8 +227,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     <span class="autosave" id="autosave"></span>
     <div class="filebtns">
       <button class="btn" onclick="saveJson()">💾 データ保存</button>
-      <button class="btn" onclick="document.getElementById('loadfile').click()">📂 データ読込</button>
-      <input type="file" id="loadfile" accept=".json" style="display:none" onchange="loadJson(event)">
+      <button class="btn" id="loadbtn" onclick="document.getElementById('loadfile').click()">📂 データ読込(Excel可)</button>
+      <input type="file" id="loadfile" accept=".json,.xlsx,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none" onchange="loadFile(event)">
       <button class="btn" onclick="printPdf()">🖨 印刷/PDF保存</button>
       <button class="btn primary" onclick="exportExcel()">📊 Excelを作成</button>
     </div>
@@ -533,17 +535,100 @@ function applyData(d) {
   $("modeReport").classList.toggle("active", mode === "report");
   render();
 }
-function loadJson(ev) {
+// ファイル読込(JSON / このツールで作ったExcel の両対応)
+function loadFile(ev) {
   const file = ev.target.files[0];
+  ev.target.value = ""; // 同じファイルを続けて選べるように先に空にする
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      applyData(JSON.parse(reader.result));
-    } catch (e) { alert("読み込めませんでした: " + e.message); }
-    ev.target.value = "";
+  if (hasContent(snapshot()) && !confirm("いまの入力内容は、読み込んだ内容で上書きされます。よろしいですか?")) return;
+  const done = () => setLoading(false);
+  const fail = (e) => { setLoading(false); alert("読み込めませんでした: " + e.message); };
+  setLoading(true);
+  if (/\.xlsx$/i.test(file.name)) {
+    // Excelの解析は端末によっては数秒かかるため、描画を1フレーム待ってから開始する
+    setTimeout(() => readBuffer(file).then(parseXlsx).then(applyData).then(done).catch(fail), 30);
+  } else {
+    readText(file).then((t) => applyData(JSON.parse(t))).then(done).catch(fail);
+  }
+}
+// 読み込み中はボタンを押せなくして状態を見せる
+const LOAD_LABEL = "📂 データ読込(Excel可)";
+function setLoading(on) {
+  const b = $("loadbtn");
+  if (!b) return;
+  b.disabled = on;
+  b.textContent = on ? "⏳ 読み込み中…" : LOAD_LABEL;
+}
+const readText = (file) => new Promise((res, rej) => {
+  const fr = new FileReader();
+  fr.onload = () => res(fr.result);
+  fr.onerror = () => rej(new Error("ファイルを開けませんでした"));
+  fr.readAsText(file);
+});
+const readBuffer = (file) => new Promise((res, rej) => {
+  const fr = new FileReader();
+  fr.onload = () => res(fr.result);
+  fr.onerror = () => rej(new Error("ファイルを開けませんでした"));
+  fr.readAsArrayBuffer(file);
+});
+
+// このツールが書き出したExcelを読み戻す(セルの値をそのまま使うので推測が要らない)
+async function parseXlsx(buf) {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buf);
+  const ws = wb.worksheets[0];
+  if (!ws) throw new Error("シートが見つかりません");
+  // セルを文字列で取り出す(数式セルは計算結果が無ければ空。単価×数量から再計算される)
+  const txt = (addr) => {
+    const v = ws.getCell(addr).value;
+    if (v === null || v === undefined) return "";
+    if (typeof v === "object") {
+      if (v.richText) return v.richText.map((t) => t.text).join("").trim();
+      if (v.formula !== undefined) return v.result === null || v.result === undefined ? "" : String(v.result).trim();
+      if (v.text !== undefined) return String(v.text).trim();
+      return "";
+    }
+    return String(v).trim();
   };
-  reader.readAsText(file);
+  const d = { app: "ensei-shushi-maker", version: 1, mode: "plan", info: {}, note: "", expenses: [], incomes: [] };
+  const title = txt("A1");
+  d.mode = /報告/.test(title) ? "report" : "plan";
+  d.info.name = title.replace(/\s*遠征収支(計画書|報告書)\s*$/, "").trim();
+
+  let key = null, layout = null, sawHeader = false;
+  for (let r = 2; r <= ws.rowCount; r++) {
+    const a = txt(`A${r}`), b = txt(`B${r}`);
+    if (a === "日程") { d.info.dates = b; continue; }
+    if (a === "宿泊先") { d.info.hotel = b; continue; }
+    if (a === "会場") { d.info.venue = b; continue; }
+    if (a === "参加人数") {
+      const p = b.match(/選手\s*(\d+)/), st = b.match(/スタッフ\s*(\d+)/);
+      if (p) d.info.players = p[1];
+      if (st) d.info.staff = st[1];
+      continue;
+    }
+    if (a === "収入" || a === "支出") { key = a === "収入" ? "incomes" : "expenses"; layout = null; continue; }
+    if (a === "収支") { key = null; layout = null; continue; }
+    if (a.startsWith("※")) { d.note = a.replace(/^※\s*/, ""); continue; }
+    if (a === "項目") { sawHeader = true; layout = b === "単価" ? "plan" : "report"; continue; }
+    if (/合計$/.test(a)) { key = null; layout = null; continue; }
+    if (!key || !layout || !a) continue;
+    const row = { item: a, unitPrice: "", qty: "", amount: "", actual: "", note: "" };
+    if (layout === "plan") {
+      row.unitPrice = b; row.qty = txt(`C${r}`); row.amount = txt(`D${r}`); row.note = txt(`E${r}`);
+      // 単価×数量と同じ金額なら金額欄を空に戻す
+      // (そのままだと「金額を直接入力した行」になり、単価を直しても再計算されなくなる)
+      const u = num(row.unitPrice), q = qtyCalc(row.qty), a = num(row.amount);
+      if (u !== null && q !== null && a !== null && Math.round(u * q) === Math.round(a)) row.amount = "";
+    } else {
+      row.qty = b; row.amount = txt(`C${r}`); row.actual = txt(`D${r}`); row.note = txt(`F${r}`);
+    }
+    d[key].push(row);
+  }
+  // 「項目」見出しの表が無いものは別物とみなす(A1に文字があるだけのExcelを誤って取り込まないため)
+  if (!sawHeader)
+    throw new Error("このツールで作成したExcelではないようです。「Excelを作成」で書き出したファイルを選んでください");
+  return d;
 }
 
 // ---------- 自動保存(この端末のブラウザに保存) ----------
