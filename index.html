@@ -109,6 +109,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   .tot b.minus { color: var(--red); }
   .barin .spacer { flex: 1; }
   .filebtns { display: flex; gap: 8px; flex-wrap: wrap; }
+  .restorebar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--amber); border: 1px solid #e6d9a8; border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; }
+  .restorebar .spacer { flex: 1; }
+  .restorebar b { margin-left: 6px; font-weight: 700; }
+  .autosave { font-size: 12px; color: var(--muted); white-space: nowrap; }
   details.help { font-size: 13px; color: var(--muted); margin: 4px 0 14px; }
   details.help summary { cursor: pointer; color: var(--green-dark); font-weight: 600; }
   details.help li { margin: 4px 0; }
@@ -150,25 +154,47 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   </div>
 </header>
 <main>
+  <div id="restorebar" class="restorebar" style="display:none">
+    <span>💾 前回の入力を復元しました<b id="restoretime"></b></span>
+    <span class="spacer"></span>
+    <button class="btn small" onclick="newDoc()">新しく作り直す</button>
+    <button class="btn small" onclick="this.parentNode.style.display='none'">閉じる</button>
+  </div>
   <details class="help">
     <summary>はじめての方へ(使い方)</summary>
     <ul>
       <li><b>遠征前:</b>「収支計画」モードで入力 →「Excelを作成」。単価×数量は自動計算されます(金額欄に直接入力すれば上書き)。</li>
-      <li><b>遠征後:</b>「収支報告」に切り替えると計画の金額が引き継がれるので、実績を入れるだけ。差額は自動計算。</li>
-      <li><b>途中保存・引き継ぎ:</b>「データ保存」で出るファイルを次回「データ読込」すれば続きから。他のスタッフへの引き継ぎもこのファイルをLINE等で送るだけ。</li>
-      <li>入力内容はどこにも送信されません(この画面の中だけで完結)。</li>
+      <li><b>遠征後:</b>「収支報告」に切り替えると計画の数量・金額が引き継がれるので、実績を入れるだけ。差額は自動計算。</li>
+      <li><b>自動保存:</b>入力内容はこの端末のブラウザに自動で保存されます。閉じても次に開けば続きから。別の遠征を始めるときは基本情報の「🆕 新しく作り直す」を押してください。</li>
+      <li><b>引き継ぎ:</b>「データ保存」で出るファイルを相手が「データ読込」すれば続きから作業できます。他のスタッフへの引き継ぎはこのファイルをLINE等で送るだけ。</li>
+      <li>入力内容はどこにも送信されません(この端末の中だけで完結)。</li>
     </ul>
   </details>
 
   <section class="card">
-    <h2>基本情報</h2>
+    <h2>基本情報 <span class="spacer"></span>
+      <button class="btn small" onclick="newDoc()">🆕 新しく作り直す</button>
+    </h2>
     <div class="grid">
       <label class="f">大会・遠征名<input id="f_name" placeholder="例: 関東大会DIV2" value=""></label>
-      <label class="f">日程<input id="f_dates" placeholder="例: 2026/7/25～2026/7/28"></label>
+      <label class="f">開始日<input id="f_date1" type="date" onchange="renderTotals()"></label>
+      <label class="f">終了日<input id="f_date2" type="date" onchange="renderTotals()"></label>
       <label class="f">宿泊先<input id="f_hotel" placeholder="例: ホテルセレクトイン伊勢崎"></label>
       <label class="f">会場<input id="f_venue" placeholder="例: コーエイ前橋フットボールセンター 他"></label>
       <label class="f">選手数<input id="f_players" type="number" min="0" placeholder="18"></label>
       <label class="f">スタッフ数<input id="f_staff" type="number" min="0" placeholder="2"></label>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>収入 <span class="spacer"></span>
+      <button class="btn small" onclick="addRow('incomes')">＋ 行を追加</button>
+    </h2>
+    <div class="tablewrap"><table id="tbl_incomes"></table></div>
+    <div class="chips" id="chips_incomes"></div>
+    <div class="proposal" id="proposal" style="display:none">
+      <span id="proposalText"></span>
+      <button class="btn small" onclick="applyProposal()">この金額を選手負担金に反映</button>
     </div>
   </section>
 
@@ -179,19 +205,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     </h2>
     <div class="tablewrap"><table id="tbl_expenses"></table></div>
     <div class="chips" id="chips_expenses"></div>
-  </section>
-
-  <section class="card">
-    <h2>収入 <span class="spacer"></span>
-      <button class="btn small" onclick="addRow('incomes')">＋ 行を追加</button>
-    </h2>
-    <div class="tablewrap"><table id="tbl_incomes"></table></div>
-    <div class="chips" id="chips_incomes"></div>
     <datalist id="qtylist"><option value="一式"></option></datalist>
-    <div class="proposal" id="proposal" style="display:none">
-      <span id="proposalText"></span>
-      <button class="btn small" onclick="applyProposal()">この金額を選手負担金に反映</button>
-    </div>
+    <datalist id="items_expenses"></datalist>
+    <datalist id="items_incomes"></datalist>
   </section>
 
   <section class="card">
@@ -206,6 +222,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     <span class="tot">収入<b id="t_inc">¥0</b></span>
     <span class="tot" id="t_diff_wrap">収支差額<b id="t_diff">¥0</b></span>
     <span class="spacer"></span>
+    <span class="autosave" id="autosave"></span>
     <div class="filebtns">
       <button class="btn" onclick="saveJson()">💾 データ保存</button>
       <button class="btn" onclick="document.getElementById('loadfile').click()">📂 データ読込</button>
@@ -229,7 +246,8 @@ const blankRow = () => ({ item: "", unitPrice: "", qty: "", amount: "", actual: 
 
 // 選択式の項目リスト(star: 定番セットに含む)
 const EXP_ITEMS = [
-  { item: "宿泊費", star: true },
+  { item: "宿泊費(選手)", star: true },
+  { item: "宿泊費(スタッフ)", star: true },
   { item: "朝食代" },
   { item: "昼食代", star: true },
   { item: "夕食代", star: true },
@@ -332,37 +350,38 @@ function onCell(key, i, field, value) {
   state[key][i][field] = value;
   renderTotals(); // 入力中はフォーカスを保つため全再描画しない
 }
-function onItemSelect(key, i, sel) {
+function onItemPick(key, i, value) {
+  // 確定時(リスト選択 or フォーカスアウト)に定番項目なら数量の既定値を補完
   const r = state[key][i];
-  if (sel.value === "__custom__") {
-    r._free = true; r.item = "";
-    render();
-    const inp = document.querySelector(`#tbl_${key} tr:nth-child(${i + 2}) td:first-child input`);
-    if (inp) inp.focus();
-    return;
-  }
-  r.item = sel.value;
-  const t = itemList(key).find((x) => x.item === sel.value);
+  r.item = value;
+  const t = itemList(key).find((x) => x.item === value);
   if (t && t.qty && !r.qty) r.qty = t.qty;
-  if (sel.value === "選手負担金" && !r.qty) r.qty = $("f_players").value || "";
+  if (value === "選手負担金" && !r.qty) r.qty = $("f_players").value || "";
   render();
+}
+// ---------- 日程 ----------
+function datesText() {
+  const d1 = $("f_date1").value, d2 = $("f_date2").value;
+  const fmt = (s) => { const [y, m, d] = s.split("-"); return `${y}/${+m}/${+d}`; };
+  if (!d1 && !d2) return "";
+  if (d1 && d2) {
+    const nights = Math.round((new Date(d2) - new Date(d1)) / 86400000);
+    if (nights > 0) return `${fmt(d1)}～${fmt(d2)}(${nights}泊${nights + 1}日)`;
+    if (nights === 0) return `${fmt(d1)}(日帰り)`;
+    return `${fmt(d1)}～${fmt(d2)}`;
+  }
+  return fmt(d1 || d2);
 }
 
 // ---------- 描画 ----------
 function headerHtml() {
   return mode === "plan"
     ? "<tr><th style='min-width:170px'>項目</th><th style='width:110px'>単価</th><th style='width:110px'>数量</th><th style='width:120px'>金額(自動)</th><th style='min-width:150px'>備考</th><th></th></tr>"
-    : "<tr><th style='min-width:170px'>項目</th><th style='width:120px'>計画</th><th style='width:120px'>実績</th><th style='width:110px'>差額</th><th style='min-width:150px'>備考</th><th></th></tr>";
+    : "<tr><th style='min-width:170px'>項目</th><th style='width:90px'>数量</th><th style='width:120px'>計画</th><th style='width:120px'>実績</th><th style='width:110px'>差額</th><th style='min-width:150px'>備考</th><th></th></tr>";
 }
 function itemCellHtml(key, r, i) {
-  const names = itemList(key).map((t) => t.item);
-  if (r._free || (r.item && !names.includes(r.item))) {
-    return `<td><input value="${esc(r.item)}" placeholder="項目名を入力" oninput="onCell('${key}',${i},'item',this.value)"></td>`;
-  }
-  const opts = [`<option value="" ${r.item ? "" : "selected"} disabled hidden>▼ 項目を選択</option>`]
-    .concat(names.map((n) => `<option value="${esc(n)}" ${n === r.item ? "selected" : ""}>${esc(n)}</option>`))
-    .concat(`<option value="__custom__">✏️ その他(自由入力)</option>`);
-  return `<td><select class="${r.item ? "" : "empty"}" onchange="onItemSelect('${key}',${i},this)">${opts.join("")}</select></td>`;
+  // 直接入力もリスト選択(datalist)もできるコンボ入力
+  return `<td><input list="items_${key}" value="${esc(r.item)}" placeholder="項目を選択 or 入力" oninput="onCell('${key}',${i},'item',this.value)" onchange="onItemPick('${key}',${i},this.value)"></td>`;
 }
 function rowHtml(key, r, i) {
   const cells = [];
@@ -373,6 +392,7 @@ function rowHtml(key, r, i) {
     const auto = rowAmount(r);
     cells.push(`<td><input id="amt_${key}_${i}" inputmode="numeric" value="${esc(r.amount)}" placeholder="${auto ? auto.toLocaleString("ja-JP") : ""}" style="text-align:right" oninput="onCell('${key}',${i},'amount',this.value)"></td>`);
   } else {
+    cells.push(`<td><input list="qtylist" value="${esc(r.qty)}" placeholder="数 or 一式" style="text-align:center" oninput="onCell('${key}',${i},'qty',this.value)"></td>`);
     cells.push(`<td><input inputmode="numeric" value="${esc(r.amount)}" style="text-align:right" oninput="onCell('${key}',${i},'amount',this.value)"></td>`);
     cells.push(`<td><input inputmode="numeric" value="${esc(r.actual)}" placeholder="実績額" style="text-align:right" oninput="onCell('${key}',${i},'actual',this.value)"></td>`);
     const hasA = num(r.actual) !== null;
@@ -387,19 +407,19 @@ function totalRowHtml(key) {
   const label = (key === "expenses" ? "支出" : "収入") + "合計";
   if (mode === "plan")
     return `<tr class="totalrow"><td>${label}</td><td></td><td></td><td class="calc" id="sum_${key}"></td><td></td><td class="del"></td></tr>`;
-  return `<tr class="totalrow"><td>${label}</td><td class="calc" id="sump_${key}"></td><td class="calc" id="suma_${key}"></td><td class="calc" id="sumd_${key}"></td><td></td><td class="del"></td></tr>`;
+  return `<tr class="totalrow"><td>${label}</td><td></td><td class="calc" id="sump_${key}"></td><td class="calc" id="suma_${key}"></td><td class="calc" id="sumd_${key}"></td><td></td><td class="del"></td></tr>`;
 }
 function render() {
   for (const key of ["expenses", "incomes"]) {
     if (!state[key].length) state[key].push(blankRow());
     $("tbl_" + key).innerHTML = headerHtml() + state[key].map((r, i) => rowHtml(key, r, i)).join("") + totalRowHtml(key);
-    // タップで追加できるチップ(未追加の項目のみ)
-    const used = state[key].map((r) => r.item);
-    const chips = itemList(key).filter((t) => !used.includes(t.item))
+    // タップで追加できるチップ(同じ項目を何度でも使えるよう常に全項目を表示)
+    const chips = itemList(key)
       .map((t) => `<button class="chip" onclick="addPreset('${key}','${esc(t.item)}')">＋ ${esc(t.item)}</button>`);
     $("chips_" + key).innerHTML = chips.length ? `<span class="lbl">タップで追加:</span>` + chips.join("") : "";
   }
   renderTotals();
+  scheduleAutoSave();
 }
 function renderTotals() {
   const exp = mode === "plan" ? totalPlan(state.expenses) : totalActual(state.expenses);
@@ -452,7 +472,15 @@ function renderTotals() {
     box.style.display = "flex";
     box.dataset.per = per;
   } else box.style.display = "none";
+  fitFooter();
 }
+// 固定フッターの高さぶんだけ本文の下に余白を確保する
+// (スマホでボタンや合計が折り返して背が高くなっても、最後の行が隠れない)
+function fitFooter() {
+  const f = document.querySelector("footer.bar");
+  if (f) document.querySelector("main").style.paddingBottom = f.offsetHeight + 20 + "px";
+}
+window.addEventListener("resize", fitFooter);
 function applyProposal() {
   const per = num($("proposal").dataset.per), players = num($("f_players").value);
   if (!per || !players) return;
@@ -466,7 +494,7 @@ function applyProposal() {
 function snapshot() {
   return {
     app: "ensei-shushi-maker", version: 1, mode,
-    info: { name: $("f_name").value, dates: $("f_dates").value, hotel: $("f_hotel").value, venue: $("f_venue").value, players: $("f_players").value, staff: $("f_staff").value },
+    info: { name: $("f_name").value, dateStart: $("f_date1").value, dateEnd: $("f_date2").value, dates: datesText(), hotel: $("f_hotel").value, venue: $("f_venue").value, players: $("f_players").value, staff: $("f_staff").value },
     note: $("f_note").value,
     expenses: state.expenses, incomes: state.incomes,
   };
@@ -483,24 +511,79 @@ function saveJson() {
   const name = safeName($("f_name").value || "遠征");
   download(new Blob([JSON.stringify(snapshot(), null, 2)], { type: "application/json" }), `収支データ_${name}.json`);
 }
+// 保存データ(ファイル/自動保存)を画面に反映する
+function applyData(d) {
+  $("f_name").value = d.info?.name ?? "";
+  // 新形式(dateStart/End)優先、旧形式(dates文字列)からも復元
+  if (d.info?.dateStart || d.info?.dateEnd) {
+    $("f_date1").value = d.info.dateStart || ""; $("f_date2").value = d.info.dateEnd || "";
+  } else {
+    const m = [...String(d.info?.dates ?? "").matchAll(/(\d{4})\/(\d{1,2})\/(\d{1,2})/g)];
+    const iso = (x) => `${x[1]}-${String(x[2]).padStart(2, "0")}-${String(x[3]).padStart(2, "0")}`;
+    $("f_date1").value = m[0] ? iso(m[0]) : ""; $("f_date2").value = m[1] ? iso(m[1]) : "";
+  }
+  $("f_hotel").value = d.info?.hotel ?? ""; $("f_venue").value = d.info?.venue ?? "";
+  $("f_players").value = d.info?.players ?? ""; $("f_staff").value = d.info?.staff ?? "";
+  $("f_note").value = d.note ?? "";
+  state.expenses = (d.expenses ?? []).map((r) => Object.assign(blankRow(), r));
+  state.incomes = (d.incomes ?? []).map((r) => Object.assign(blankRow(), r));
+  // setMode() は計画→報告の切替時に金額を固定してしまうため、復元では直接モードを設定する
+  mode = d.mode === "report" ? "report" : "plan";
+  $("modePlan").classList.toggle("active", mode === "plan");
+  $("modeReport").classList.toggle("active", mode === "report");
+  render();
+}
 function loadJson(ev) {
   const file = ev.target.files[0];
   if (!file) return;
   const reader = new FileReader();
   reader.onload = () => {
     try {
-      const d = JSON.parse(reader.result);
-      $("f_name").value = d.info?.name ?? ""; $("f_dates").value = d.info?.dates ?? "";
-      $("f_hotel").value = d.info?.hotel ?? ""; $("f_venue").value = d.info?.venue ?? "";
-      $("f_players").value = d.info?.players ?? ""; $("f_staff").value = d.info?.staff ?? "";
-      $("f_note").value = d.note ?? "";
-      state.expenses = (d.expenses ?? []).map((r) => Object.assign(blankRow(), r));
-      state.incomes = (d.incomes ?? []).map((r) => Object.assign(blankRow(), r));
-      setMode(d.mode === "report" ? "report" : "plan");
+      applyData(JSON.parse(reader.result));
     } catch (e) { alert("読み込めませんでした: " + e.message); }
     ev.target.value = "";
   };
   reader.readAsText(file);
+}
+
+// ---------- 自動保存(この端末のブラウザに保存) ----------
+const LS_KEY = "ensei-shushi:draft";
+let saveTimer = null, lsOk = true, wiping = false;
+const two = (n) => String(n).padStart(2, "0");
+function autoSave() {
+  if (!lsOk || wiping) return;
+  clearTimeout(saveTimer);
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(Object.assign(snapshot(), { savedAt: new Date().toISOString() })));
+    const t = new Date();
+    $("autosave").textContent = `✓ 自動保存 ${two(t.getHours())}:${two(t.getMinutes())}`;
+  } catch (e) {
+    lsOk = false; // プライベートブラウズ等で保存できない環境では静かに無効化
+  }
+}
+function scheduleAutoSave() { if (lsOk) { clearTimeout(saveTimer); saveTimer = setTimeout(autoSave, 800); } }
+// 何か入力されているか(空のまま復元バーを出さないための判定)
+const hasContent = (d) =>
+  !!(d.info?.name || d.info?.hotel || d.info?.venue || d.info?.dateStart || d.note ||
+     [...(d.expenses ?? []), ...(d.incomes ?? [])].some((r) => r.item || r.amount || r.actual || r.unitPrice));
+function restoreDraft() {
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem(LS_KEY) || "null"); } catch (e) { lsOk = false; }
+  if (!d || d.app !== "ensei-shushi-maker" || !hasContent(d)) return false;
+  applyData(d);
+  if (d.savedAt) {
+    const t = new Date(d.savedAt);
+    $("restoretime").textContent = `(${t.getMonth() + 1}/${t.getDate()} ${two(t.getHours())}:${two(t.getMinutes())})`;
+  }
+  $("restorebar").style.display = "flex";
+  return true;
+}
+function newDoc() {
+  if (!confirm("入力内容をすべて消して、新しく作り直しますか?\n(必要なら先に「データ保存」でファイルに残してください)")) return;
+  wiping = true; // reload時に走るpagehideの自動保存で書き戻されるのを防ぐ
+  clearTimeout(saveTimer);
+  try { localStorage.removeItem(LS_KEY); } catch (e) {}
+  location.reload();
 }
 
 // ---------- Excel 出力 ----------
@@ -530,7 +613,8 @@ function setCell(ws, addr, value, style, fmt, bordered = true) {
 function writeTable(ws, row, title, rows) {
   setCell(ws, `A${row}`, title, { font: { name: FONT, size: 11, bold: true } }, null, false);
   row++;
-  const heads = mode === "plan" ? ["項目", "単価", "数量", "金額", "備考"] : ["項目", "計画", "実績", "差額", "備考"];
+  const heads = mode === "plan" ? ["項目", "単価", "数量", "金額", "備考"] : ["項目", "数量", "計画", "実績", "差額", "備考"];
+  const NOTECOL = mode === "plan" ? "E" : "F"; // 備考列(モードで位置が変わる)
   heads.forEach((h, i) => setCell(ws, String.fromCharCode(65 + i) + row, h, S.head));
   row++;
   const first = row;
@@ -544,11 +628,13 @@ function writeTable(ws, row, title, rows) {
       else if (u !== null && qn !== null) setCell(ws, `D${row}`, { formula: `B${row}*C${row}` }, S.numcell, FMT_NUM);
       else { const auto = rowAmount(r); setCell(ws, `D${row}`, auto || null, S.numcell, FMT_NUM); }
     } else {
-      setCell(ws, `B${row}`, num(r.amount), S.numcell, FMT_NUM);
-      setCell(ws, `C${row}`, num(r.actual), S.numcell, FMT_NUM);
-      setCell(ws, `D${row}`, { formula: `C${row}-B${row}` }, S.numcell, FMT_NUM);
+      const qn = fullNum(r.qty);
+      setCell(ws, `B${row}`, qn !== null ? qn : (r.qty || null), qn !== null ? S.numcell : S.center, qn !== null ? FMT_NUM : null);
+      setCell(ws, `C${row}`, num(r.amount), S.numcell, FMT_NUM);
+      setCell(ws, `D${row}`, num(r.actual), S.numcell, FMT_NUM);
+      setCell(ws, `E${row}`, { formula: `D${row}-C${row}` }, S.numcell, FMT_NUM);
     }
-    setCell(ws, `E${row}`, r.note || "", S.note);
+    setCell(ws, NOTECOL + row, r.note || "", S.note);
     row++;
   }
   // 合計行(行が0件のときはSUM式が循環参照になるため数値0を書く)
@@ -558,11 +644,12 @@ function writeTable(ws, row, title, rows) {
     setCell(ws, `B${row}`, null, S.total); setCell(ws, `C${row}`, null, S.total);
     setCell(ws, `D${row}`, sum("D"), Object.assign({}, S.total, { alignment: { horizontal: "right", vertical: "middle" } }), FMT_YEN);
   } else {
-    setCell(ws, `B${row}`, sum("B"), Object.assign({}, S.total, { alignment: { horizontal: "right" } }), FMT_YEN);
+    setCell(ws, `B${row}`, null, S.total);
     setCell(ws, `C${row}`, sum("C"), Object.assign({}, S.total, { alignment: { horizontal: "right" } }), FMT_YEN);
-    setCell(ws, `D${row}`, { formula: `C${row}-B${row}` }, Object.assign({}, S.total, { alignment: { horizontal: "right" } }), FMT_YEN);
+    setCell(ws, `D${row}`, sum("D"), Object.assign({}, S.total, { alignment: { horizontal: "right" } }), FMT_YEN);
+    setCell(ws, `E${row}`, { formula: `D${row}-C${row}` }, Object.assign({}, S.total, { alignment: { horizontal: "right" } }), FMT_YEN);
   }
-  setCell(ws, `E${row}`, null, S.total);
+  setCell(ws, NOTECOL + row, null, S.total);
   return row;
 }
 
@@ -574,29 +661,30 @@ async function exportExcel() {
   const ws = wb.addWorksheet(mode === "plan" ? "収支計画" : "収支報告", {
     pageSetup: { paperSize: 9, orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
   });
-  [34, 14.5, 14.5, 14.5, 30].forEach((w, i) => (ws.getColumn(i + 1).width = w));
+  const LAST = mode === "plan" ? "E" : "F"; // 最終列(報告モードは数量列が増える)
+  (mode === "plan" ? [34, 14.5, 14.5, 14.5, 30] : [32, 10, 13.5, 13.5, 13.5, 24]).forEach((w, i) => (ws.getColumn(i + 1).width = w));
 
-  ws.mergeCells("A1:E1");
+  ws.mergeCells(`A1:${LAST}1`);
   setCell(ws, "A1", `${name} 遠征${docType}`, S.title, null, false);
   ws.getRow(1).height = 24;
   let row = 2;
 
   const players = $("f_players").value, staff = $("f_staff").value;
   const members = players || staff ? `選手${players || "?"}名・スタッフ${staff || "?"}名` : "";
-  const info = [["日程", $("f_dates").value], ["宿泊先", $("f_hotel").value], ["会場", $("f_venue").value], ["参加人数", members]].filter((x) => x[1]);
+  const info = [["日程", datesText()], ["宿泊先", $("f_hotel").value], ["会場", $("f_venue").value], ["参加人数", members]].filter((x) => x[1]);
   for (const [label, value] of info) {
     setCell(ws, `A${row}`, label, S.head);
-    ws.mergeCells(`B${row}:E${row}`);
+    ws.mergeCells(`B${row}:${LAST}${row}`);
     setCell(ws, `B${row}`, value, S.normal);
-    ["C", "D", "E"].forEach((c) => (ws.getCell(c + row).border = BORDER));
+    (mode === "plan" ? ["C", "D", "E"] : ["C", "D", "E", "F"]).forEach((c) => (ws.getCell(c + row).border = BORDER));
     row++;
   }
   row++;
 
-  const expTotal = writeTable(ws, row, "支出", rows.expenses);
-  row = expTotal + 2;
   const incTotal = writeTable(ws, row, "収入", rows.incomes);
   row = incTotal + 2;
+  const expTotal = writeTable(ws, row, "支出", rows.expenses);
+  row = expTotal + 2;
 
   // 収支まとめ
   setCell(ws, `A${row}`, "収支", { font: { name: FONT, size: 11, bold: true } }, null, false);
@@ -610,28 +698,30 @@ async function exportExcel() {
     setCell(ws, `D${row}`, { formula: `D${row - 2}-D${row - 1}` }, Object.assign({}, S.balance, { alignment: { horizontal: "right" } }), FMT_YEN);
     ["B", "C", "E"].forEach((c) => setCell(ws, c + row, null, S.balance));
   } else {
-    ["", "計画", "実績", "差額", ""].forEach((h, i) => setCell(ws, String.fromCharCode(65 + i) + row, h || null, S.head));
+    ["", "", "計画", "実績", "差額", ""].forEach((h, i) => setCell(ws, String.fromCharCode(65 + i) + row, h || null, S.head));
     row++;
     const incRow = row, expRow = row + 1;
     for (const [label, src] of [["収入合計", incTotal], ["支出合計", expTotal]]) {
       setCell(ws, `A${row}`, label, S.normal);
-      setCell(ws, `B${row}`, { formula: `B${src}` }, S.numcell, FMT_YEN);
+      setCell(ws, `B${row}`, null, S.normal);
       setCell(ws, `C${row}`, { formula: `C${src}` }, S.numcell, FMT_YEN);
-      setCell(ws, `D${row}`, { formula: `C${row}-B${row}` }, S.numcell, FMT_YEN);
-      setCell(ws, `E${row}`, null, S.normal);
+      setCell(ws, `D${row}`, { formula: `D${src}` }, S.numcell, FMT_YEN);
+      setCell(ws, `E${row}`, { formula: `D${row}-C${row}` }, S.numcell, FMT_YEN);
+      setCell(ws, `F${row}`, null, S.normal);
       row++;
     }
     setCell(ws, `A${row}`, "収支差額", S.balance);
-    setCell(ws, `B${row}`, { formula: `B${incRow}-B${expRow}` }, Object.assign({}, S.balance, { alignment: { horizontal: "right" } }), FMT_YEN);
+    setCell(ws, `B${row}`, null, S.balance);
     setCell(ws, `C${row}`, { formula: `C${incRow}-C${expRow}` }, Object.assign({}, S.balance, { alignment: { horizontal: "right" } }), FMT_YEN);
-    setCell(ws, `D${row}`, { formula: `C${row}-B${row}` }, Object.assign({}, S.balance, { alignment: { horizontal: "right" } }), FMT_YEN);
-    setCell(ws, `E${row}`, null, S.balance);
+    setCell(ws, `D${row}`, { formula: `D${incRow}-D${expRow}` }, Object.assign({}, S.balance, { alignment: { horizontal: "right" } }), FMT_YEN);
+    setCell(ws, `E${row}`, { formula: `D${row}-C${row}` }, Object.assign({}, S.balance, { alignment: { horizontal: "right" } }), FMT_YEN);
+    setCell(ws, `F${row}`, null, S.balance);
   }
   row += 2;
 
   const noteText = $("f_note").value;
   if (noteText) {
-    ws.mergeCells(`A${row}:E${row}`);
+    ws.mergeCells(`A${row}:${LAST}${row}`);
     setCell(ws, `A${row}`, "※ " + noteText, S.note, null, false);
   }
 
@@ -645,7 +735,7 @@ function buildPrintHtml() {
   const docType = mode === "plan" ? "収支計画書" : "収支報告書";
   const players = $("f_players").value, staff = $("f_staff").value;
   const members = players || staff ? `選手${players || "?"}名・スタッフ${staff || "?"}名` : "";
-  const info = [["日程", $("f_dates").value], ["宿泊先", $("f_hotel").value], ["会場", $("f_venue").value], ["参加人数", members]].filter((x) => x[1]);
+  const info = [["日程", datesText()], ["宿泊先", $("f_hotel").value], ["会場", $("f_venue").value], ["参加人数", members]].filter((x) => x[1]);
   const n = (v) => (v === null || v === undefined ? "" : Math.round(v).toLocaleString("ja-JP"));
   let h = `<h1>${esc(name)} 遠征${docType}</h1>`;
   if (info.length) h += "<table>" + info.map(([k, v]) => `<tr><th style="width:20%">${esc(k)}</th><td colspan="4">${esc(v)}</td></tr>`).join("") + "</table>";
@@ -659,20 +749,20 @@ function buildPrintHtml() {
       });
       t += `<tr class="tot"><td>${title}合計</td><td></td><td></td><td class="r">¥${n(totalPlan(rows))}</td><td></td></tr>`;
     } else {
-      t += `<tr><th style="width:32%">項目</th><th style="width:14%">計画</th><th style="width:14%">実績</th><th style="width:13%">差額</th><th>備考</th></tr>`;
+      t += `<tr><th style="width:28%">項目</th><th style="width:9%">数量</th><th style="width:13%">計画</th><th style="width:13%">実績</th><th style="width:12%">差額</th><th>備考</th></tr>`;
       let sp = 0, sa = 0;
       rows.forEach((r) => {
         const p = num(r.amount) ?? 0, a = num(r.actual), hasA = a !== null;
         sp += p; sa += a ?? 0;
         const d = hasA ? a - p : null;
-        t += `<tr><td>${esc(r.item)}</td><td class="r">${n(p)}</td><td class="r">${hasA ? n(a) : ""}</td><td class="r ${d > 0 && title === "支出" ? "neg" : ""}">${d ? n(d) : ""}</td><td class="s">${esc(r.note)}</td></tr>`;
+        t += `<tr><td>${esc(r.item)}</td><td class="c">${esc(r.qty)}</td><td class="r">${n(p)}</td><td class="r">${hasA ? n(a) : ""}</td><td class="r ${d > 0 && title === "支出" ? "neg" : ""}">${d ? n(d) : ""}</td><td class="s">${esc(r.note)}</td></tr>`;
       });
-      t += `<tr class="tot"><td>${title}合計</td><td class="r">¥${n(sp)}</td><td class="r">¥${n(sa)}</td><td class="r ${sa - sp > 0 && title === "支出" ? "neg" : ""}">¥${n(sa - sp)}</td><td></td></tr>`;
+      t += `<tr class="tot"><td>${title}合計</td><td></td><td class="r">¥${n(sp)}</td><td class="r">¥${n(sa)}</td><td class="r ${sa - sp > 0 && title === "支出" ? "neg" : ""}">¥${n(sa - sp)}</td><td></td></tr>`;
     }
     return t + "</table>";
   };
   const exp = state.expenses.filter((r) => r.item), inc = state.incomes.filter((r) => r.item);
-  h += section("支出", exp) + section("収入", inc);
+  h += section("収入", inc) + section("支出", exp);
 
   // 収支まとめ
   h += `<div class="sec">収支</div><table>`;
@@ -702,7 +792,17 @@ function printPdf() {
 
 // ---------- 初期化 ----------
 $("f_players").addEventListener("input", renderTotals);
-render();
+// 項目の候補リスト(datalist)を作成
+for (const key of ["expenses", "incomes"]) {
+  $("items_" + key).innerHTML = itemList(key).map((t) => `<option value="${esc(t.item)}"></option>`).join("");
+}
+if (!restoreDraft()) render();
+// すべての入力を拾って自動保存(個別のイベント登録漏れを防ぐ)
+document.addEventListener("input", scheduleAutoSave);
+document.addEventListener("change", scheduleAutoSave);
+// アプリを閉じる・ホームに戻る瞬間も取りこぼさない
+window.addEventListener("pagehide", autoSave);
+document.addEventListener("visibilitychange", () => { if (document.hidden) autoSave(); });
 
 </script>
 </body>
